@@ -1,6 +1,8 @@
-Flask==2.3.3
-flask-cors==4.0.0
-PyPDF2==3.0.1
-python-docx==0.8.11
-openai==0.28.1
-
+flask
+flask-cors
+openai
+PyPDF2
+python-docx
+requests
+reportlab
+gunicorn
