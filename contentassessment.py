@@ -22,7 +22,52 @@ HUBSPOT_FORM_PORTAL_ID  = os.getenv("HUBSPOT_PORTAL_ID")      # Your HubSpot por
 HUBSPOT_FORM_GUID       = os.getenv("HUBSPOT_FORM_GUID")      # Form GUID from HubSpot Forms
 
 app = Flask(__name__)
-CORS(app)
+
+# Explicit CORS — allows requests from HubSpot-hosted pages and local dev.
+# Add your exact HubSpot page domain if it differs from pedowitzgroup.com.
+CORS(app, resources={r"/*": {
+    "origins": [
+        "https://www.pedowitzgroup.com",
+        "https://pedowitzgroup.com",
+        "https://hs-sites.com",
+        "https://hubspot.com",
+        "http://localhost:3000",
+        "http://localhost:8080"
+    ],
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"],
+    "expose_headers": ["Content-Disposition"],
+    "supports_credentials": False
+}})
+
+@app.after_request
+def after_request(response):
+    # Belt-and-suspenders CORS headers on every response
+    origin = request.headers.get("Origin", "")
+    allowed = [
+        "https://www.pedowitzgroup.com",
+        "https://pedowitzgroup.com",
+        "https://hs-sites.com",
+        "https://hubspot.com",
+        "http://localhost:3000",
+        "http://localhost:8080",
+    ]
+    if origin in allowed:
+        response.headers["Access-Control-Allow-Origin"]  = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Expose-Headers"]= "Content-Disposition"
+    return response
+
+@app.route("/preflight", methods=["OPTIONS"])
+def handle_options():
+    response = jsonify({"status": "ok"})
+    origin = request.headers.get("Origin", "")
+    response.headers["Access-Control-Allow-Origin"]  = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Max-Age"]       = "86400"
+    return response, 200
 
 
 # ─────────────────────────────────────────────
