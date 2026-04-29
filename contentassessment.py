@@ -9,65 +9,35 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PyPDF2 import PdfReader
 import docx
-import openai
+from openai import OpenAI
+
+_openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ─────────────────────────────────────────────
 #  CONFIGURATION
 #  Set these as environment variables on Render.
 #  Never hardcode API keys in source code.
 # ─────────────────────────────────────────────
-openai.api_key          = os.getenv("OPENAI_API_KEY")
 HUBSPOT_ACCESS_TOKEN    = os.getenv("HUBSPOT_ACCESS_TOKEN")   # Private App token from HubSpot
 HUBSPOT_FORM_PORTAL_ID  = os.getenv("HUBSPOT_PORTAL_ID")      # Your HubSpot portal ID (numeric string)
 HUBSPOT_FORM_GUID       = os.getenv("HUBSPOT_FORM_GUID")      # Form GUID from HubSpot Forms
 
 app = Flask(__name__)
 
-# Explicit CORS — allows requests from HubSpot-hosted pages and local dev.
-# Add your exact HubSpot page domain if it differs from pedowitzgroup.com.
-CORS(app, resources={r"/*": {
-    "origins": [
-        "https://www.pedowitzgroup.com",
-        "https://pedowitzgroup.com",
-        "https://hs-sites.com",
-        "https://hubspot.com",
-        "http://localhost:3000",
-        "http://localhost:8080"
-    ],
-    "methods": ["GET", "POST", "OPTIONS"],
-    "allow_headers": ["Content-Type", "Authorization"],
-    "expose_headers": ["Content-Disposition"],
-    "supports_credentials": False
-}})
+# Wildcard CORS — accepts requests from any origin.
+# This is the simplest approach and works with HubSpot's CSP.
+# The API has no sensitive data that requires origin restriction.
+CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"],
+     expose_headers=["Content-Disposition"])
 
 @app.after_request
 def after_request(response):
-    # Belt-and-suspenders CORS headers on every response
-    origin = request.headers.get("Origin", "")
-    allowed = [
-        "https://www.pedowitzgroup.com",
-        "https://pedowitzgroup.com",
-        "https://hs-sites.com",
-        "https://hubspot.com",
-        "http://localhost:3000",
-        "http://localhost:8080",
-    ]
-    if origin in allowed:
-        response.headers["Access-Control-Allow-Origin"]  = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-        response.headers["Access-Control-Expose-Headers"]= "Content-Disposition"
-    return response
-
-@app.route("/preflight", methods=["OPTIONS"])
-def handle_options():
-    response = jsonify({"status": "ok"})
-    origin = request.headers.get("Origin", "")
-    response.headers["Access-Control-Allow-Origin"]  = origin
+    response.headers["Access-Control-Allow-Origin"]  = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    response.headers["Access-Control-Max-Age"]       = "86400"
-    return response, 200
+    response.headers["Access-Control-Expose-Headers"]= "Content-Disposition"
+    return response
 
 
 # ─────────────────────────────────────────────
@@ -80,11 +50,12 @@ def retry_on_timeout(max_retries=2):
             for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
-                except openai.error.Timeout:
-                    if attempt == max_retries:
+                except Exception as e:
+                    if "timeout" in str(e).lower() and attempt < max_retries:
+                        print(f"Timeout on attempt {attempt + 1}, retrying...", flush=True)
+                        time.sleep(2 ** attempt)
+                    else:
                         raise
-                    print(f"Timeout on attempt {attempt + 1}, retrying...", flush=True)
-                    time.sleep(2 ** attempt)
             return None
         return wrapper
     return decorator
@@ -166,19 +137,18 @@ Content to evaluate:
 {text[:4000]}
 """
     try:
-        response = openai.ChatCompletion.create(
+        response = _openai_client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=2000,
-            request_timeout=90
+            timeout=90
         )
         return response.choices[0].message.content.strip()
-    except openai.error.Timeout as e:
-        print(f"OpenAI timeout: {e}", flush=True)
-        return "Error: Request timed out. Please try again."
     except Exception as e:
         print(f"OpenAI error: {e}", flush=True)
+        if "timeout" in str(e).lower():
+            return "Error: Request timed out. Please try again."
         return f"Error: {str(e)}"
 
 

@@ -1,6 +1,6 @@
 flask
 flask-cors
-openai
+openai>=1.0.0
 PyPDF2
 python-docx
 requests
