@@ -134,15 +134,15 @@ Example format:
 ]
 
 Content to evaluate:
-{text[:4000]}
+{text[:3000]}
 """
     try:
         response = _openai_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
-            max_tokens=2000,
-            timeout=90
+            max_tokens=2500,
+            timeout=180
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
